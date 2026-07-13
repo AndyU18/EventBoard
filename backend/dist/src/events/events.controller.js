@@ -17,14 +17,17 @@ const common_1 = require("@nestjs/common");
 const swagger_1 = require("@nestjs/swagger");
 const messaging_service_1 = require("../messaging/messaging.service");
 const publish_event_dto_1 = require("./dto/publish-event.dto");
+const event_schema_registry_1 = require("./event-schema-registry");
 let EventsController = class EventsController {
     messagingService;
     constructor(messagingService) {
         this.messagingService = messagingService;
     }
     async publishEvent(publishEventDto) {
+        const validatedPayload = (0, event_schema_registry_1.validateEventPayload)(publishEventDto.type, publishEventDto.payload);
         const eventMessage = {
             ...publishEventDto,
+            payload: validatedPayload,
             createdAt: new Date().toISOString(),
         };
         const routingKey = `events.${publishEventDto.type.toLowerCase()}`;

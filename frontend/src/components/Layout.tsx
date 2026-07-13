@@ -43,7 +43,9 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
   const navItems = [
     { name: 'Dashboard', path: '/', icon: LayoutDashboard },
     { name: 'Historial (Event Store)', path: '/events', icon: History },
-    { name: 'Simulador', path: '/simulator', icon: Terminal },
+    ...(user?.role === 'ADMIN' || user?.role === 'PRODUCER'
+      ? [{ name: 'Simulador', path: '/simulator', icon: Terminal }]
+      : []),
   ];
 
   return (

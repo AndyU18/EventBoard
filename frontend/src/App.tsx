@@ -54,7 +54,7 @@ function App() {
           <Route
             path="/simulator"
             element={
-              <ProtectedRoute>
+              <ProtectedRoute allowedRoles={['ADMIN', 'PRODUCER']}>
                 <Layout>
                   <Simulator />
                 </Layout>

@@ -2,6 +2,7 @@ import { Body, Controller, Post } from '@nestjs/common';
 import { ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { MessagingService } from '../messaging/messaging.service';
 import { PublishEventDto } from './dto/publish-event.dto';
+import { validateEventPayload } from './event-schema-registry';
 
 @ApiTags('Simulador de Eventos')
 @Controller('events')
@@ -13,8 +14,11 @@ export class EventsController {
   @ApiResponse({ status: 201, description: 'Evento publicado en el bus con éxito.' })
   @ApiResponse({ status: 400, description: 'Datos del evento inválidos.' })
   async publishEvent(@Body() publishEventDto: PublishEventDto) {
+    const validatedPayload = validateEventPayload(publishEventDto.type, publishEventDto.payload);
+
     const eventMessage = {
       ...publishEventDto,
+      payload: validatedPayload,
       createdAt: new Date().toISOString(),
     };
 

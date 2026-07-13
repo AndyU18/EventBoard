@@ -8,10 +8,10 @@ export declare class EventsController {
         message: string;
         rabbitmqConnected: boolean;
         data: {
+            payload: any;
             createdAt: string;
             type: string;
             sourceModule: string;
-            payload: Record<string, any>;
             userId?: string;
             severity?: import("@prisma/client").Severity;
         };
