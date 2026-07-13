@@ -7,6 +7,7 @@ export declare class NotificationsConsumer {
     constructor(prisma: PrismaService, messagingService: MessagingService);
     handleRabbitEvent(payload: any): Promise<void>;
     handleLocalEvent(payload: any): Promise<void>;
+    handleDlqAlert(payload: any): Promise<void>;
     private processNotification;
     private findEventLogWithRetry;
 }

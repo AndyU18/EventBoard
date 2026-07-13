@@ -79,8 +79,45 @@ let MessagingService = MessagingService_1 = class MessagingService {
     async setupConsumers() {
         if (!this.channel)
             return;
+        const dlxExchangeName = 'dlx-exchange';
+        const dlqQueueName = 'dlq-queue';
+        await this.channel.assertExchange(dlxExchangeName, 'topic', { durable: true });
+        await this.channel.assertQueue(dlqQueueName, { durable: true });
+        await this.channel.bindQueue(dlqQueueName, dlxExchangeName, 'dead-letter.#');
+        const dlqChannel = this.channel;
+        await dlqChannel.consume(dlqQueueName, (msg) => {
+            if (msg) {
+                try {
+                    const content = JSON.parse(msg.content.toString());
+                    const originalRoutingKey = msg.fields.routingKey;
+                    this.logger.error(`🚨 [DLQ - MESSAGE REJECTED] Mensaje desviado a la DLQ. Routing Key original: ${originalRoutingKey}. Payload: ${JSON.stringify(content)}`);
+                    this.eventEmitter.emit('internal.dlq.alert', {
+                        type: 'DEAD_LETTER_EVENT',
+                        sourceModule: 'rabbitmq',
+                        payload: {
+                            originalRoutingKey,
+                            originalMessage: content,
+                            deathReason: 'rejected_by_consumer_rules',
+                        },
+                        severity: 'CRITICAL',
+                        createdAt: new Date().toISOString(),
+                    });
+                    dlqChannel.ack(msg);
+                }
+                catch (err) {
+                    this.logger.error('Error procesando mensaje en la DLQ', err);
+                    dlqChannel.ack(msg);
+                }
+            }
+        });
         const eventStoreQueue = 'event-store-queue';
-        await this.channel.assertQueue(eventStoreQueue, { durable: true });
+        await this.channel.assertQueue(eventStoreQueue, {
+            durable: true,
+            arguments: {
+                'x-dead-letter-exchange': dlxExchangeName,
+                'x-dead-letter-routing-key': 'dead-letter.event-store',
+            }
+        });
         await this.channel.bindQueue(eventStoreQueue, this.exchangeName, 'events.*');
         const storeChannel = this.channel;
         await storeChannel.consume(eventStoreQueue, (msg) => {
@@ -88,17 +125,26 @@ let MessagingService = MessagingService_1 = class MessagingService {
                 try {
                     const content = JSON.parse(msg.content.toString());
                     this.logger.log(`[RabbitMQ Consumer] Recibido en ${eventStoreQueue}: ${content.type}`);
+                    if (content.payload && content.payload.simulate_error === true) {
+                        throw new Error('Simulated processing failure for DLQ demonstration');
+                    }
                     this.eventEmitter.emit('internal.event.store', content);
                     storeChannel.ack(msg);
                 }
                 catch (err) {
-                    this.logger.error(`Error procesando mensaje de ${eventStoreQueue}`, err);
+                    this.logger.error(`[RabbitMQ Consumer] Error procesando mensaje de ${eventStoreQueue}: ${err.message}. Enviando a DLQ.`);
                     storeChannel.nack(msg, false, false);
                 }
             }
         });
         const notificationsQueue = 'notifications-queue';
-        await this.channel.assertQueue(notificationsQueue, { durable: true });
+        await this.channel.assertQueue(notificationsQueue, {
+            durable: true,
+            arguments: {
+                'x-dead-letter-exchange': dlxExchangeName,
+                'x-dead-letter-routing-key': 'dead-letter.notifications',
+            }
+        });
         await this.channel.bindQueue(notificationsQueue, this.exchangeName, 'events.*');
         const notifChannel = this.channel;
         await notifChannel.consume(notificationsQueue, (msg) => {
@@ -106,11 +152,14 @@ let MessagingService = MessagingService_1 = class MessagingService {
                 try {
                     const content = JSON.parse(msg.content.toString());
                     this.logger.log(`[RabbitMQ Consumer] Recibido en ${notificationsQueue}: ${content.type}`);
+                    if (content.payload && content.payload.simulate_error === true) {
+                        throw new Error('Simulated notification processing failure for DLQ');
+                    }
                     this.eventEmitter.emit('internal.notifications', content);
                     notifChannel.ack(msg);
                 }
                 catch (err) {
-                    this.logger.error(`Error procesando mensaje de ${notificationsQueue}`, err);
+                    this.logger.error(`[RabbitMQ Consumer] Error procesando mensaje de ${notificationsQueue}: ${err.message}. Enviando a DLQ.`);
                     notifChannel.nack(msg, false, false);
                 }
             }

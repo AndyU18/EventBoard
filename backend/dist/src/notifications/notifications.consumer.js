@@ -34,6 +34,32 @@ let NotificationsConsumer = NotificationsConsumer_1 = class NotificationsConsume
             await this.processNotification(payload);
         }
     }
+    async handleDlqAlert(payload) {
+        this.logger.warn(`[Notifications] Procesando alerta de DLQ: ${payload.payload.originalRoutingKey}`);
+        try {
+            const eventLog = await this.prisma.eventLog.create({
+                data: {
+                    type: 'DEAD_LETTER_EVENT',
+                    sourceModule: 'rabbitmq',
+                    payload: payload.payload,
+                    severity: client_1.Severity.CRITICAL,
+                },
+            });
+            const message = `🚨 [DLQ Alert]: Mensaje rechazado en la cola original. Reenviado a la DLQ. Routing Key original: "${payload.payload.originalRoutingKey}".`;
+            await this.prisma.notification.create({
+                data: {
+                    recipient: 'admin@eventboard.com',
+                    message,
+                    status: client_1.NotificationStatus.SENT,
+                    eventLogId: eventLog.id,
+                },
+            });
+            this.logger.log(`[Notifications] Alerta de DLQ registrada exitosamente en DB: ID ${eventLog.id}`);
+        }
+        catch (error) {
+            this.logger.error(`[Notifications] Error al registrar alerta de DLQ: ${error.message}`, error);
+        }
+    }
     async processNotification(data) {
         const isCritical = data.severity === client_1.Severity.CRITICAL || data.severity === client_1.Severity.WARNING;
         const isSystemAlert = data.type && data.type.startsWith('SYSTEM_ALERT');
@@ -93,6 +119,12 @@ __decorate([
     __metadata("design:paramtypes", [Object]),
     __metadata("design:returntype", Promise)
 ], NotificationsConsumer.prototype, "handleLocalEvent", null);
+__decorate([
+    (0, event_emitter_1.OnEvent)('internal.dlq.alert'),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [Object]),
+    __metadata("design:returntype", Promise)
+], NotificationsConsumer.prototype, "handleDlqAlert", null);
 exports.NotificationsConsumer = NotificationsConsumer = NotificationsConsumer_1 = __decorate([
     (0, common_1.Injectable)(),
     __metadata("design:paramtypes", [prisma_service_1.PrismaService,

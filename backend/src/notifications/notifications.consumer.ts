@@ -27,6 +27,36 @@ export class NotificationsConsumer {
     }
   }
 
+  @OnEvent('internal.dlq.alert')
+  async handleDlqAlert(payload: any) {
+    this.logger.warn(`[Notifications] Procesando alerta de DLQ: ${payload.payload.originalRoutingKey}`);
+    try {
+      const eventLog = await this.prisma.eventLog.create({
+        data: {
+          type: 'DEAD_LETTER_EVENT',
+          sourceModule: 'rabbitmq',
+          payload: payload.payload,
+          severity: Severity.CRITICAL,
+        },
+      });
+
+      const message = `🚨 [DLQ Alert]: Mensaje rechazado en la cola original. Reenviado a la DLQ. Routing Key original: "${payload.payload.originalRoutingKey}".`;
+      
+      await this.prisma.notification.create({
+        data: {
+          recipient: 'admin@eventboard.com',
+          message,
+          status: NotificationStatus.SENT,
+          eventLogId: eventLog.id,
+        },
+      });
+
+      this.logger.log(`[Notifications] Alerta de DLQ registrada exitosamente en DB: ID ${eventLog.id}`);
+    } catch (error) {
+      this.logger.error(`[Notifications] Error al registrar alerta de DLQ: ${(error as Error).message}`, error);
+    }
+  }
+
   private async processNotification(data: any) {
     const isCritical = data.severity === Severity.CRITICAL || data.severity === Severity.WARNING;
     const isSystemAlert = data.type && data.type.startsWith('SYSTEM_ALERT');

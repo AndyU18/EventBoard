@@ -88,9 +88,57 @@ export class MessagingService implements OnModuleInit, OnModuleDestroy {
   private async setupConsumers() {
     if (!this.channel) return;
 
-    // 1. Cola para el Event Store (guardar en base de datos)
+    const dlxExchangeName = 'dlx-exchange';
+    const dlqQueueName = 'dlq-queue';
+
+    // 1. Declarar Dead Letter Exchange (DLX)
+    await this.channel.assertExchange(dlxExchangeName, 'topic', { durable: true });
+
+    // 2. Declarar Dead Letter Queue (DLQ)
+    await this.channel.assertQueue(dlqQueueName, { durable: true });
+
+    // 3. Enlazar la DLQ con el DLX para recibir eventos rechazados
+    await this.channel.bindQueue(dlqQueueName, dlxExchangeName, 'dead-letter.#');
+
+    // Consumidor de la DLQ para registrar alertas del sistema
+    const dlqChannel = this.channel;
+    await dlqChannel.consume(dlqQueueName, (msg: any) => {
+      if (msg) {
+        try {
+          const content = JSON.parse(msg.content.toString());
+          const originalRoutingKey = msg.fields.routingKey;
+          this.logger.error(`🚨 [DLQ - MESSAGE REJECTED] Mensaje desviado a la DLQ. Routing Key original: ${originalRoutingKey}. Payload: ${JSON.stringify(content)}`);
+          
+          // Emitir alerta de DLQ interna
+          this.eventEmitter.emit('internal.dlq.alert', {
+            type: 'DEAD_LETTER_EVENT',
+            sourceModule: 'rabbitmq',
+            payload: {
+              originalRoutingKey,
+              originalMessage: content,
+              deathReason: 'rejected_by_consumer_rules',
+            },
+            severity: 'CRITICAL',
+            createdAt: new Date().toISOString(),
+          });
+          
+          dlqChannel.ack(msg);
+        } catch (err) {
+          this.logger.error('Error procesando mensaje en la DLQ', err);
+          dlqChannel.ack(msg);
+        }
+      }
+    });
+
+    // 4. Cola para el Event Store (configurada con DLX)
     const eventStoreQueue = 'event-store-queue';
-    await this.channel.assertQueue(eventStoreQueue, { durable: true });
+    await this.channel.assertQueue(eventStoreQueue, { 
+      durable: true,
+      arguments: {
+        'x-dead-letter-exchange': dlxExchangeName,
+        'x-dead-letter-routing-key': 'dead-letter.event-store',
+      }
+    });
     await this.channel.bindQueue(eventStoreQueue, this.exchangeName, 'events.*');
     
     const storeChannel = this.channel;
@@ -99,18 +147,31 @@ export class MessagingService implements OnModuleInit, OnModuleDestroy {
         try {
           const content = JSON.parse(msg.content.toString());
           this.logger.log(`[RabbitMQ Consumer] Recibido en ${eventStoreQueue}: ${content.type}`);
+          
+          // Simulación académica de error de procesamiento
+          if (content.payload && content.payload.simulate_error === true) {
+            throw new Error('Simulated processing failure for DLQ demonstration');
+          }
+          
           this.eventEmitter.emit('internal.event.store', content);
           storeChannel.ack(msg);
         } catch (err) {
-          this.logger.error(`Error procesando mensaje de ${eventStoreQueue}`, err);
+          this.logger.error(`[RabbitMQ Consumer] Error procesando mensaje de ${eventStoreQueue}: ${(err as Error).message}. Enviando a DLQ.`);
+          // nack con requeue=false desvía a la DLQ
           storeChannel.nack(msg, false, false);
         }
       }
     });
 
-    // 2. Cola para Notificaciones
+    // 5. Cola para Notificaciones (configurada con DLX)
     const notificationsQueue = 'notifications-queue';
-    await this.channel.assertQueue(notificationsQueue, { durable: true });
+    await this.channel.assertQueue(notificationsQueue, { 
+      durable: true,
+      arguments: {
+        'x-dead-letter-exchange': dlxExchangeName,
+        'x-dead-letter-routing-key': 'dead-letter.notifications',
+      }
+    });
     await this.channel.bindQueue(notificationsQueue, this.exchangeName, 'events.*');
 
     const notifChannel = this.channel;
@@ -119,10 +180,15 @@ export class MessagingService implements OnModuleInit, OnModuleDestroy {
         try {
           const content = JSON.parse(msg.content.toString());
           this.logger.log(`[RabbitMQ Consumer] Recibido en ${notificationsQueue}: ${content.type}`);
+          
+          if (content.payload && content.payload.simulate_error === true) {
+            throw new Error('Simulated notification processing failure for DLQ');
+          }
+
           this.eventEmitter.emit('internal.notifications', content);
           notifChannel.ack(msg);
         } catch (err) {
-          this.logger.error(`Error procesando mensaje de ${notificationsQueue}`, err);
+          this.logger.error(`[RabbitMQ Consumer] Error procesando mensaje de ${notificationsQueue}: ${(err as Error).message}. Enviando a DLQ.`);
           notifChannel.nack(msg, false, false);
         }
       }
