@@ -29,6 +29,10 @@ export class EventStoreConsumer {
   }
 
   private async saveEvent(data: any) {
+    if (data.isReplay) {
+      this.logger.log(`[EventStore] Ignorando evento de repetición (Replay): ${data.type}`);
+      return;
+    }
     try {
       const eventLog = await this.prisma.eventLog.create({
         data: {

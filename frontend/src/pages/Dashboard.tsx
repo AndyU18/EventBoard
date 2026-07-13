@@ -3,6 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import api from '../services/api';
 import { useEventStore } from '../store/useEventStore';
 import { useSocket } from '../hooks/useSocket';
+import { getSocket } from '../services/socket';
 import { 
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
   PieChart, Pie, Cell
@@ -17,6 +18,9 @@ export const Dashboard: React.FC = () => {
 
   const realTimeEvents = useEventStore((state) => state.events);
   const setEvents = useEventStore((state) => state.setEvents);
+  const clearEvents = useEventStore((state) => state.clearAll);
+
+  const [selectedRoom, setSelectedRoom] = React.useState('room:all');
 
   useQuery({
     queryKey: ['initial-events'],
@@ -35,6 +39,15 @@ export const Dashboard: React.FC = () => {
     },
     refetchInterval: 10000,
   });
+
+  const handleRoomChange = (room: string) => {
+    setSelectedRoom(room);
+    clearEvents();
+    const socket = getSocket();
+    if (socket.connected) {
+      socket.emit('subscribe_to_room', room);
+    }
+  };
 
   const severityData = [
     { name: 'INFO', value: stats.severities.find((s: any) => s.severity === 'INFO')?._count || 0, color: '#6366f1' },
@@ -187,7 +200,7 @@ export const Dashboard: React.FC = () => {
       </div>
 
       <div className="bg-slate-900/20 border border-slate-800/80 backdrop-blur-md rounded-2xl shadow-2xl p-6">
-        <div className="flex items-center justify-between pb-4 border-b border-slate-800/60 mb-6">
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-4 border-b border-slate-800/60 mb-6">
           <div>
             <h3 className="font-bold text-base text-slate-200 flex items-center gap-2">
               <Clock className="h-5 w-5 text-indigo-400 animate-pulse" />
@@ -195,26 +208,49 @@ export const Dashboard: React.FC = () => {
             </h3>
             <p className="text-xs text-slate-500">Eventos consumidos de RabbitMQ ingresando en vivo al sistema.</p>
           </div>
-          <span className="text-[10px] bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 font-bold px-3 py-1 rounded-full uppercase tracking-wider">
-            Escuchando...
-          </span>
+          
+          <div className="flex items-center gap-3 w-full md:w-auto">
+            <label className="text-xs text-slate-400 font-semibold shrink-0">Canal en Vivo:</label>
+            <select
+              value={selectedRoom}
+              onChange={(e) => handleRoomChange(e.target.value)}
+              className="bg-slate-950 border border-slate-800/80 rounded-xl px-3 py-1.5 text-xs text-slate-300 focus:outline-none focus:border-indigo-500 cursor-pointer font-semibold"
+            >
+              <option value="room:all">Todos los Eventos</option>
+              <option value="room:critical">Solo Críticos (CRITICAL)</option>
+              <option value="room:warning-critical">Críticos & Advertencias</option>
+              <option value="room:auth">Módulo Auth</option>
+              <option value="room:documents">Módulo Documents</option>
+              <option value="room:tasks">Módulo Tasks</option>
+              <option value="room:payments">Módulo Payments</option>
+              <option value="room:system">Módulo System</option>
+            </select>
+            
+            <span className="text-[10px] bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 font-bold px-3 py-1 rounded-full uppercase tracking-wider">
+              Activo
+            </span>
+          </div>
         </div>
 
         <div className="space-y-3 max-h-[420px] overflow-y-auto pr-2">
           {realTimeEvents.length === 0 ? (
             <div className="text-center py-12 text-xs text-slate-500 border border-dashed border-slate-800 rounded-xl">
-              Esperando primer evento en el bus... dispara un evento en el Simulador.
+              Esperando eventos en esta sala...
             </div>
           ) : (
             realTimeEvents.slice(0, 10).map((event) => {
               let badgeColor = 'bg-slate-800 text-slate-400 border-slate-700/60';
               if (event.severity === 'WARNING') badgeColor = 'bg-amber-500/10 text-amber-400 border-amber-500/20';
               if (event.severity === 'CRITICAL') badgeColor = 'bg-rose-500/10 text-rose-400 border-rose-500/20';
+              // @ts-ignore
+              const isReplay = event.isReplay;
 
               return (
                 <div 
                   key={event.id} 
-                  className="flex flex-col md:flex-row md:items-center justify-between gap-4 p-4 bg-slate-900/40 border border-slate-800/60 rounded-xl hover:border-slate-700/80 transition-all duration-200 hover:bg-slate-900/60 animate-fade-in"
+                  className={`flex flex-col md:flex-row md:items-center justify-between gap-4 p-4 border rounded-xl hover:border-slate-700/80 transition-all duration-200 hover:bg-slate-900/60 animate-fade-in ${
+                    isReplay ? 'bg-purple-950/10 border-purple-500/20' : 'bg-slate-900/40 border-slate-800/60'
+                  }`}
                 >
                   <div className="flex items-start md:items-center gap-4">
                     <div className={`h-2 w-2 rounded-full shrink-0 ${
@@ -231,8 +267,13 @@ export const Dashboard: React.FC = () => {
                           <Box className="h-3 w-3" />
                           {event.sourceModule}
                         </span>
+                        {isReplay && (
+                          <span className="text-[9px] px-2.5 py-0.5 rounded-full border bg-purple-500/20 text-purple-400 border-purple-500/30 font-bold uppercase tracking-wider animate-pulse">
+                            Replay
+                          </span>
+                        )}
                       </div>
-                      <p className="text-[11px] text-slate-400 mt-1 font-medium">
+                      <p className="text-[11px] text-slate-450 mt-1 font-medium">
                         Payload: <code className="text-slate-350 bg-slate-950/40 px-1 py-0.5 rounded text-[10px]">{JSON.stringify(event.payload)}</code>
                       </p>
                     </div>
@@ -240,7 +281,7 @@ export const Dashboard: React.FC = () => {
 
                   <div className="text-right shrink-0 flex items-center md:flex-col gap-2 md:gap-0 justify-between md:justify-center border-t border-slate-800 md:border-none pt-2 md:pt-0">
                     <span className="text-[10px] text-slate-500 flex items-center gap-1 font-semibold">
-                      <Clock className="h-3.5 w-3.5 text-slate-500" />
+                      <Clock className="h-3.5 w-3.5 text-slate-550" />
                       {formatTime(event.createdAt)}
                     </span>
                     {event.user?.name && (
