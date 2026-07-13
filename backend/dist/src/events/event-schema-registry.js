@@ -42,7 +42,7 @@ function validateEventPayload(type, payload) {
     }
     const result = schema.safeParse(payload);
     if (!result.success) {
-        const errorMessages = result.error.errors.map(err => `${err.path.join('.')}: ${err.message}`).join(', ');
+        const errorMessages = result.error.issues.map((err) => `${err.path.join('.')}: ${err.message}`).join(', ');
         throw new common_1.BadRequestException(`Validación de Payload fallida para "${type}": ${errorMessages}`);
     }
     return result.data;
