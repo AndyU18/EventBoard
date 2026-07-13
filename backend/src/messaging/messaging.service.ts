@@ -1,12 +1,12 @@
 import { Injectable, Logger, OnModuleInit, OnModuleDestroy } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
-import * as amqp from 'amqplib';
+import { connect } from 'amqplib';
 
 @Injectable()
 export class MessagingService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(MessagingService.name);
-  private connection: amqp.Connection | null = null;
-  private channel: amqp.Channel | null = null;
+  private connection: any = null;
+  private channel: any = null;
   private isRabbitConnected = false;
 
   private readonly exchangeName = 'eventboard-exchange';
@@ -23,8 +23,7 @@ export class MessagingService implements OnModuleInit, OnModuleDestroy {
     try {
       this.logger.log(`Intentando conectar a RabbitMQ en: ${amqpUrl}`);
       
-      // Conectar a RabbitMQ con un tiempo de espera implícito
-      this.connection = await amqp.connect(amqpUrl);
+      this.connection = await connect(amqpUrl);
       this.channel = await this.connection.createChannel();
 
       // Declarar el exchange de tipo 'topic'
@@ -94,16 +93,17 @@ export class MessagingService implements OnModuleInit, OnModuleDestroy {
     await this.channel.assertQueue(eventStoreQueue, { durable: true });
     await this.channel.bindQueue(eventStoreQueue, this.exchangeName, 'events.*');
     
-    this.channel.consume(eventStoreQueue, (msg) => {
+    const storeChannel = this.channel;
+    await storeChannel.consume(eventStoreQueue, (msg: any) => {
       if (msg) {
         try {
           const content = JSON.parse(msg.content.toString());
           this.logger.log(`[RabbitMQ Consumer] Recibido en ${eventStoreQueue}: ${content.type}`);
           this.eventEmitter.emit('internal.event.store', content);
-          this.channel?.ack(msg);
+          storeChannel.ack(msg);
         } catch (err) {
           this.logger.error(`Error procesando mensaje de ${eventStoreQueue}`, err);
-          this.channel?.nack(msg, false, false);
+          storeChannel.nack(msg, false, false);
         }
       }
     });
@@ -113,16 +113,17 @@ export class MessagingService implements OnModuleInit, OnModuleDestroy {
     await this.channel.assertQueue(notificationsQueue, { durable: true });
     await this.channel.bindQueue(notificationsQueue, this.exchangeName, 'events.*');
 
-    this.channel.consume(notificationsQueue, (msg) => {
+    const notifChannel = this.channel;
+    await notifChannel.consume(notificationsQueue, (msg: any) => {
       if (msg) {
         try {
           const content = JSON.parse(msg.content.toString());
           this.logger.log(`[RabbitMQ Consumer] Recibido en ${notificationsQueue}: ${content.type}`);
           this.eventEmitter.emit('internal.notifications', content);
-          this.channel?.ack(msg);
+          notifChannel.ack(msg);
         } catch (err) {
           this.logger.error(`Error procesando mensaje de ${notificationsQueue}`, err);
-          this.channel?.nack(msg, false, false);
+          notifChannel.nack(msg, false, false);
         }
       }
     });

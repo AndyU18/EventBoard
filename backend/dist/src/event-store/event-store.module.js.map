@@ -1,0 +1,1 @@
+{"version":3,"file":"event-store.module.js","sourceRoot":"","sources":["../../../src/event-store/event-store.module.ts"],"names":[],"mappings":";;;;;;;;;AAAA,2CAAwC;AACxC,iEAA4D;AAC5D,qEAAgE;AAMzD,IAAM,gBAAgB,GAAtB,MAAM,gBAAgB;CAAG,CAAA;AAAnB,4CAAgB;2BAAhB,gBAAgB;IAJ5B,IAAA,eAAM,EAAC;QACN,WAAW,EAAE,CAAC,6CAAoB,CAAC;QACnC,SAAS,EAAE,CAAC,yCAAkB,CAAC;KAChC,CAAC;GACW,gBAAgB,CAAG"}
