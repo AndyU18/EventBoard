@@ -61,6 +61,10 @@ let NotificationsConsumer = NotificationsConsumer_1 = class NotificationsConsume
         }
     }
     async processNotification(data) {
+        if (data.isReplay) {
+            this.logger.log(`[Notifications] Ignorando alerta de repetición (Replay): ${data.type}`);
+            return;
+        }
         const isCritical = data.severity === client_1.Severity.CRITICAL || data.severity === client_1.Severity.WARNING;
         const isSystemAlert = data.type && data.type.startsWith('SYSTEM_ALERT');
         if (isCritical || isSystemAlert) {

@@ -1,7 +1,9 @@
 import { PrismaService } from '../prisma/prisma.service';
+import { MessagingService } from '../messaging/messaging.service';
 export declare class EventStoreController {
     private readonly prisma;
-    constructor(prisma: PrismaService);
+    private readonly messagingService;
+    constructor(prisma: PrismaService, messagingService: MessagingService);
     getEvents(type?: string, severity?: string, sourceModule?: string): Promise<({
         user: {
             id: string;
@@ -26,5 +28,10 @@ export declare class EventStoreController {
         modules: (import("@prisma/client").Prisma.PickEnumerable<import("@prisma/client").Prisma.EventLogGroupByOutputType, "sourceModule"[]> & {
             _count: number;
         })[];
+    }>;
+    replayEvents(startDate?: string, endDate?: string, sourceModule?: string): Promise<{
+        success: boolean;
+        message: string;
+        count: number;
     }>;
 }

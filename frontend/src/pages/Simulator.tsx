@@ -6,7 +6,7 @@ import api from '../services/api';
 import { useAuthStore } from '../store/useAuthStore';
 import { 
   Terminal, Send, Sparkles, CheckCircle,
-  ShieldAlert
+  ShieldAlert, RefreshCw, Calendar, Box
 } from 'lucide-react';
 
 const simulatorSchema = z.object({
@@ -27,9 +27,19 @@ type SimulatorForm = z.infer<typeof simulatorSchema>;
 
 export const Simulator: React.FC = () => {
   const user = useAuthStore((state) => state.user);
+  
+  // Custom simulator form states
   const [loading, setLoading] = useState(false);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+
+  // Event Replay states
+  const [replayModule, setReplayModule] = useState('');
+  const [startDate, setStartDate] = useState('');
+  const [endDate, setEndDate] = useState('');
+  const [replayLoading, setReplayLoading] = useState(false);
+  const [replaySuccess, setReplaySuccess] = useState<string | null>(null);
+  const [replayError, setReplayError] = useState<string | null>(null);
 
   const {
     register,
@@ -65,6 +75,25 @@ export const Simulator: React.FC = () => {
       setErrorMsg(err.response?.data?.message || 'Error al publicar el evento');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleReplay = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setReplayLoading(true);
+    setReplaySuccess(null);
+    setReplayError(null);
+    try {
+      const res = await api.post('/event-store/replay', {
+        startDate: startDate ? new Date(startDate).toISOString() : undefined,
+        endDate: endDate ? new Date(endDate).toISOString() : undefined,
+        sourceModule: replayModule || undefined,
+      });
+      setReplaySuccess(res.data.message);
+    } catch (err: any) {
+      setReplayError(err.response?.data?.message || 'Error al iniciar la repetición de eventos');
+    } finally {
+      setReplayLoading(false);
     }
   };
 
@@ -133,91 +162,183 @@ export const Simulator: React.FC = () => {
           Simulador de Eventos (Event Producer)
         </h2>
         <p className="text-sm text-slate-400 mt-1">
-          Publica eventos personalizados directamente en el bus para ver cómo se procesan y distribuyen en tiempo real.
+          Publica eventos personalizados o retransmite históricos en el bus para ver el procesamiento en vivo.
         </p>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-        <div className="lg:col-span-2 bg-slate-900/40 border border-slate-800 backdrop-blur-md p-6 rounded-2xl shadow-xl flex flex-col justify-between">
-          <div className="flex items-center gap-2 pb-4 border-b border-slate-800 mb-6">
-            <Terminal className="h-5 w-5 text-indigo-400" />
-            <h3 className="font-bold text-sm text-slate-200">Publicar Evento Personalizado</h3>
+        
+        {/* Left Column containing Forms */}
+        <div className="lg:col-span-2 space-y-8">
+          
+          {/* Card 1: Custom publisher */}
+          <div className="bg-slate-900/40 border border-slate-800 backdrop-blur-md p-6 rounded-2xl shadow-xl flex flex-col justify-between">
+            <div className="flex items-center gap-2 pb-4 border-b border-slate-800 mb-6">
+              <Terminal className="h-5 w-5 text-indigo-400" />
+              <h3 className="font-bold text-sm text-slate-200">Publicar Evento Personalizado</h3>
+            </div>
+
+            {successMsg && (
+              <div className="bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-xs px-4 py-3 rounded-xl mb-4 font-medium animate-fade-in flex items-center gap-2">
+                <CheckCircle className="h-4 w-4 shrink-0" />
+                {successMsg}
+              </div>
+            )}
+
+            {errorMsg && (
+              <div className="bg-rose-500/10 border border-rose-500/20 text-rose-400 text-xs px-4 py-3 rounded-xl mb-4 font-medium animate-fade-in flex items-center gap-2">
+                <ShieldAlert className="h-4 w-4 shrink-0" />
+                {errorMsg}
+              </div>
+            )}
+
+            <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div>
+                  <label className="block text-xs font-semibold text-slate-400 mb-1.5">Tipo de Evento</label>
+                  <input
+                    type="text"
+                    placeholder="USER_CREATED"
+                    className="w-full bg-slate-950 border border-slate-800/80 rounded-xl px-3 py-2.5 text-xs text-slate-200 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-all font-mono uppercase"
+                    {...register('type')}
+                  />
+                  {errors.type && <p className="text-[10px] text-rose-455 mt-1 font-medium">{errors.type.message}</p>}
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-slate-400 mb-1.5">Módulo de Origen</label>
+                  <input
+                    type="text"
+                    placeholder="auth"
+                    className="w-full bg-slate-950 border border-slate-800/80 rounded-xl px-3 py-2.5 text-xs text-slate-200 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-all font-mono"
+                    {...register('sourceModule')}
+                  />
+                  {errors.sourceModule && <p className="text-[10px] text-rose-455 mt-1 font-medium">{errors.sourceModule.message}</p>}
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-slate-400 mb-1.5">Severidad</label>
+                  <select
+                    className="w-full bg-slate-950 border border-slate-800/80 rounded-xl px-3 py-2.5 text-xs text-slate-350 focus:outline-none focus:border-indigo-500 transition-all cursor-pointer font-semibold"
+                    {...register('severity')}
+                  >
+                    <option value="INFO">INFO</option>
+                    <option value="WARNING">WARNING</option>
+                    <option value="CRITICAL">CRITICAL</option>
+                  </select>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-400 mb-1.5">Payload (JSON)</label>
+                <textarea
+                  rows={5}
+                  placeholder="{}"
+                  className="w-full bg-slate-950 border border-slate-800/80 rounded-xl px-4 py-3 text-xs text-indigo-300 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-all font-mono"
+                  {...register('payloadStr')}
+                />
+                {errors.payloadStr && <p className="text-[10px] text-rose-455 mt-1 font-medium">{errors.payloadStr.message}</p>}
+              </div>
+
+              <button
+                type="submit"
+                disabled={loading}
+                className="w-full bg-gradient-to-r from-indigo-500 via-purple-500 to-pink-500 text-white font-bold py-3 rounded-xl hover:opacity-90 active:scale-[0.99] transition-all text-xs flex items-center justify-center gap-2 mt-2 shadow-lg shadow-indigo-500/10"
+              >
+                <Send className="h-4 w-4" />
+                Publicar Mensaje en RabbitMQ
+              </button>
+            </form>
           </div>
 
-          {successMsg && (
-            <div className="bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-xs px-4 py-3 rounded-xl mb-4 font-medium animate-fade-in flex items-center gap-2">
-              <CheckCircle className="h-4 w-4 shrink-0" />
-              {successMsg}
+          {/* Card 2: Event Replay controls */}
+          <div className="bg-slate-900/40 border border-slate-800 backdrop-blur-md p-6 rounded-2xl shadow-xl flex flex-col">
+            <div className="flex items-center gap-2 pb-4 border-b border-slate-800 mb-6">
+              <RefreshCw className="h-5 w-5 text-purple-400" />
+              <h3 className="font-bold text-sm text-slate-200">Repetición de Eventos Históricos (Event Replay)</h3>
             </div>
-          )}
 
-          {errorMsg && (
-            <div className="bg-rose-500/10 border border-rose-500/20 text-rose-400 text-xs px-4 py-3 rounded-xl mb-4 font-medium animate-fade-in flex items-center gap-2">
-              <ShieldAlert className="h-4 w-4 shrink-0" />
-              {errorMsg}
-            </div>
-          )}
+            {replaySuccess && (
+              <div className="bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-xs px-4 py-3 rounded-xl mb-4 font-medium animate-fade-in flex items-center gap-2">
+                <CheckCircle className="h-4 w-4 shrink-0" />
+                {replaySuccess}
+              </div>
+            )}
 
-          <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <div>
-                <label className="block text-xs font-semibold text-slate-400 mb-1.5">Tipo de Evento</label>
-                <input
-                  type="text"
-                  placeholder="USER_CREATED"
-                  className="w-full bg-slate-950 border border-slate-800/80 rounded-xl px-3 py-2.5 text-xs text-slate-200 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-all font-mono uppercase"
-                  {...register('type')}
-                />
-                {errors.type && <p className="text-[10px] text-rose-455 mt-1 font-medium">{errors.type.message}</p>}
+            {replayError && (
+              <div className="bg-rose-500/10 border border-rose-500/20 text-rose-400 text-xs px-4 py-3 rounded-xl mb-4 font-medium animate-fade-in flex items-center gap-2">
+                <ShieldAlert className="h-4 w-4 shrink-0" />
+                {replayError}
+              </div>
+            )}
+
+            <form onSubmit={handleReplay} className="space-y-4">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div>
+                  <label className="block text-xs font-semibold text-slate-400 mb-1.5 flex items-center gap-1">
+                    <Box className="h-3.5 w-3.5 text-slate-500" />
+                    Filtrar por Módulo
+                  </label>
+                  <select
+                    value={replayModule}
+                    onChange={(e) => setReplayModule(e.target.value)}
+                    className="w-full bg-slate-950 border border-slate-800/80 rounded-xl px-3 py-2.5 text-xs text-slate-350 focus:outline-none focus:border-indigo-500 transition-all cursor-pointer font-semibold"
+                  >
+                    <option value="">Todos los módulos</option>
+                    <option value="auth">Auth</option>
+                    <option value="documents">Documents</option>
+                    <option value="tasks">Tasks</option>
+                    <option value="payments">Payments</option>
+                    <option value="system">System</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-slate-400 mb-1.5 flex items-center gap-1">
+                    <Calendar className="h-3.5 w-3.5 text-slate-500" />
+                    Fecha Inicial (Desde)
+                  </label>
+                  <input
+                    type="datetime-local"
+                    value={startDate}
+                    onChange={(e) => setStartDate(e.target.value)}
+                    className="w-full bg-slate-950 border border-slate-800/80 rounded-xl px-3 py-2 text-xs text-slate-300 focus:outline-none focus:border-indigo-500 transition-all cursor-pointer font-medium"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-slate-400 mb-1.5 flex items-center gap-1">
+                    <Calendar className="h-3.5 w-3.5 text-slate-500" />
+                    Fecha Final (Hasta)
+                  </label>
+                  <input
+                    type="datetime-local"
+                    value={endDate}
+                    onChange={(e) => setEndDate(e.target.value)}
+                    className="w-full bg-slate-950 border border-slate-800/80 rounded-xl px-3 py-2 text-xs text-slate-300 focus:outline-none focus:border-indigo-500 transition-all cursor-pointer font-medium"
+                  />
+                </div>
               </div>
 
-              <div>
-                <label className="block text-xs font-semibold text-slate-400 mb-1.5">Módulo de Origen</label>
-                <input
-                  type="text"
-                  placeholder="auth"
-                  className="w-full bg-slate-950 border border-slate-800/80 rounded-xl px-3 py-2.5 text-xs text-slate-200 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-all font-mono"
-                  {...register('sourceModule')}
-                />
-                {errors.sourceModule && <p className="text-[10px] text-rose-455 mt-1 font-medium">{errors.sourceModule.message}</p>}
-              </div>
+              <p className="text-[10px] text-slate-500 leading-relaxed">
+                *Nota: Los eventos reemitidos llevarán la bandera <code>isReplay: true</code>. El dashboard los capturará e insertará en vivo en el feed con una etiqueta de "Replay" sin duplicar los registros en la base de datos ni generar nuevas alertas redundantes.
+              </p>
 
-              <div>
-                <label className="block text-xs font-semibold text-slate-400 mb-1.5">Severidad</label>
-                <select
-                  className="w-full bg-slate-950 border border-slate-800/80 rounded-xl px-3 py-2.5 text-xs text-slate-350 focus:outline-none focus:border-indigo-500 transition-all cursor-pointer font-semibold"
-                  {...register('severity')}
-                >
-                  <option value="INFO">INFO</option>
-                  <option value="WARNING">WARNING</option>
-                  <option value="CRITICAL">CRITICAL</option>
-                </select>
-              </div>
-            </div>
+              <button
+                type="submit"
+                disabled={replayLoading}
+                className="w-full bg-gradient-to-r from-purple-600 via-indigo-600 to-blue-600 text-white font-bold py-3 rounded-xl hover:opacity-90 active:scale-[0.99] transition-all text-xs flex items-center justify-center gap-2 mt-2 shadow-lg shadow-purple-550/10"
+              >
+                <RefreshCw className={`h-4 w-4 ${replayLoading ? 'animate-spin' : ''}`} />
+                Iniciar Repetición de Mensajes
+              </button>
+            </form>
+          </div>
 
-            <div>
-              <label className="block text-xs font-semibold text-slate-400 mb-1.5">Payload (JSON)</label>
-              <textarea
-                rows={6}
-                placeholder="{}"
-                className="w-full bg-slate-950 border border-slate-800/80 rounded-xl px-4 py-3 text-xs text-indigo-300 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-all font-mono"
-                {...register('payloadStr')}
-              />
-              {errors.payloadStr && <p className="text-[10px] text-rose-455 mt-1 font-medium">{errors.payloadStr.message}</p>}
-            </div>
-
-            <button
-              type="submit"
-              disabled={loading}
-              className="w-full bg-gradient-to-r from-indigo-500 via-purple-500 to-pink-500 text-white font-bold py-3 rounded-xl hover:opacity-90 active:scale-[0.99] transition-all text-xs flex items-center justify-center gap-2 mt-4 shadow-lg shadow-indigo-500/10"
-            >
-              <Send className="h-4 w-4" />
-              Publicar Mensaje en RabbitMQ
-            </button>
-          </form>
         </div>
 
-        <div className="bg-slate-900/30 border border-slate-800/80 backdrop-blur-md p-6 rounded-2xl shadow-xl flex flex-col">
+        {/* Right Column: Quick simulations */}
+        <div className="bg-slate-900/30 border border-slate-800/80 backdrop-blur-md p-6 rounded-2xl shadow-xl flex flex-col h-fit">
           <div className="flex items-center gap-2 pb-4 border-b border-slate-800 mb-6">
             <Sparkles className="h-5 w-5 text-indigo-400 animate-pulse" />
             <h3 className="font-bold text-sm text-slate-200">Simulación Rápida</h3>
@@ -227,7 +348,7 @@ export const Simulator: React.FC = () => {
             Haz clic en cualquiera de las siguientes plantillas para cargar automáticamente un caso de simulación predefinido y realista.
           </p>
 
-          <div className="space-y-3 flex-1 overflow-y-auto max-h-[360px] pr-1">
+          <div className="space-y-3 overflow-y-auto max-h-[460px] pr-1">
             {quickSimulations.map((sim, i) => {
               return (
                 <button
@@ -247,6 +368,7 @@ export const Simulator: React.FC = () => {
             })}
           </div>
         </div>
+
       </div>
     </div>
   );

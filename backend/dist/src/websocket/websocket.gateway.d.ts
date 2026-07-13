@@ -8,6 +8,10 @@ export declare class WebsocketGateway implements OnGatewayConnection, OnGatewayD
     constructor(messagingService: MessagingService);
     handleConnection(client: Socket): void;
     handleDisconnect(client: Socket): void;
+    handleRoomSubscription(client: Socket, room: string): {
+        success: boolean;
+        room: string;
+    };
     handleRabbitEvent(payload: any): Promise<void>;
     handleLocalEvent(payload: any): Promise<void>;
     private broadcastEvent;

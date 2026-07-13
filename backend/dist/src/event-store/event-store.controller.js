@@ -16,10 +16,13 @@ exports.EventStoreController = void 0;
 const common_1 = require("@nestjs/common");
 const swagger_1 = require("@nestjs/swagger");
 const prisma_service_1 = require("../prisma/prisma.service");
+const messaging_service_1 = require("../messaging/messaging.service");
 let EventStoreController = class EventStoreController {
     prisma;
-    constructor(prisma) {
+    messagingService;
+    constructor(prisma, messagingService) {
         this.prisma = prisma;
+        this.messagingService = messagingService;
     }
     async getEvents(type, severity, sourceModule) {
         const where = {};
@@ -55,6 +58,44 @@ let EventStoreController = class EventStoreController {
             modules: moduleGroups,
         };
     }
+    async replayEvents(startDate, endDate, sourceModule) {
+        const where = {};
+        if (startDate || endDate) {
+            where.createdAt = {};
+            if (startDate)
+                where.createdAt.gte = new Date(startDate);
+            if (endDate)
+                where.createdAt.lte = new Date(endDate);
+        }
+        if (sourceModule)
+            where.sourceModule = sourceModule;
+        const events = await this.prisma.eventLog.findMany({
+            where,
+            orderBy: { createdAt: 'asc' },
+        });
+        for (let i = 0; i < events.length; i++) {
+            const event = events[i];
+            const replayMessage = {
+                id: event.id,
+                type: event.type,
+                sourceModule: event.sourceModule,
+                payload: event.payload,
+                userId: event.userId,
+                severity: event.severity,
+                createdAt: event.createdAt,
+                isReplay: true,
+            };
+            setTimeout(async () => {
+                const routingKey = `events.${event.type.toLowerCase()}`;
+                await this.messagingService.publish(routingKey, replayMessage);
+            }, i * 200);
+        }
+        return {
+            success: true,
+            message: `Iniciada la repetición de ${events.length} eventos históricos en segundo plano.`,
+            count: events.length,
+        };
+    }
 };
 exports.EventStoreController = EventStoreController;
 __decorate([
@@ -76,9 +117,21 @@ __decorate([
     __metadata("design:paramtypes", []),
     __metadata("design:returntype", Promise)
 ], EventStoreController.prototype, "getStats", null);
+__decorate([
+    (0, common_1.Post)('replay'),
+    (0, swagger_1.ApiOperation)({ summary: 'Reemitir eventos históricos en el bus (Event Replay)' }),
+    (0, swagger_1.ApiResponse)({ status: 200, description: 'Eventos reemitidos con éxito en segundo plano.' }),
+    __param(0, (0, common_1.Body)('startDate')),
+    __param(1, (0, common_1.Body)('endDate')),
+    __param(2, (0, common_1.Body)('sourceModule')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [String, String, String]),
+    __metadata("design:returntype", Promise)
+], EventStoreController.prototype, "replayEvents", null);
 exports.EventStoreController = EventStoreController = __decorate([
     (0, swagger_1.ApiTags)('Historial de Eventos'),
     (0, common_1.Controller)('event-store'),
-    __metadata("design:paramtypes", [prisma_service_1.PrismaService])
+    __metadata("design:paramtypes", [prisma_service_1.PrismaService,
+        messaging_service_1.MessagingService])
 ], EventStoreController);
 //# sourceMappingURL=event-store.controller.js.map

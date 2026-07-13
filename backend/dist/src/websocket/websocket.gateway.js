@@ -25,9 +25,21 @@ let WebsocketGateway = WebsocketGateway_1 = class WebsocketGateway {
     }
     handleConnection(client) {
         this.logger.log(`Cliente conectado por WebSocket: ID ${client.id}`);
+        client.join('room:all');
     }
     handleDisconnect(client) {
         this.logger.log(`Cliente desconectado de WebSocket: ID ${client.id}`);
+    }
+    handleRoomSubscription(client, room) {
+        const rooms = Array.from(client.rooms);
+        rooms.forEach((r) => {
+            if (r.startsWith('room:')) {
+                client.leave(r);
+            }
+        });
+        client.join(room);
+        this.logger.log(`Cliente ID ${client.id} se suscribió a la sala: ${room}`);
+        return { success: true, room };
     }
     async handleRabbitEvent(payload) {
         this.broadcastEvent(payload);
@@ -38,8 +50,18 @@ let WebsocketGateway = WebsocketGateway_1 = class WebsocketGateway {
         }
     }
     broadcastEvent(payload) {
-        this.logger.log(`[WebsocketGateway] Emitiendo evento en tiempo real a clientes: ${payload.type}`);
-        this.server.emit('event_received', payload);
+        this.logger.log(`[WebsocketGateway] Distribuyendo evento a salas correspondientes: ${payload.type}`);
+        this.server.to('room:all').emit('event_received', payload);
+        if (payload.severity === 'CRITICAL') {
+            this.server.to('room:critical').emit('event_received', payload);
+            this.server.to('room:warning-critical').emit('event_received', payload);
+        }
+        else if (payload.severity === 'WARNING') {
+            this.server.to('room:warning-critical').emit('event_received', payload);
+        }
+        if (payload.sourceModule) {
+            this.server.to(`room:${payload.sourceModule}`).emit('event_received', payload);
+        }
     }
 };
 exports.WebsocketGateway = WebsocketGateway;
@@ -47,6 +69,12 @@ __decorate([
     (0, websockets_1.WebSocketServer)(),
     __metadata("design:type", socket_io_1.Server)
 ], WebsocketGateway.prototype, "server", void 0);
+__decorate([
+    (0, websockets_1.SubscribeMessage)('subscribe_to_room'),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [socket_io_1.Socket, String]),
+    __metadata("design:returntype", void 0)
+], WebsocketGateway.prototype, "handleRoomSubscription", null);
 __decorate([
     (0, event_emitter_1.OnEvent)('internal.event.store'),
     __metadata("design:type", Function),
