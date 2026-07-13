@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { useAuthStore } from '../store/useAuthStore';
-import { useEventStore } from '../store/useEventStore';
 import { useQuery } from '@tanstack/react-query';
 import api from '../services/api';
 import { 

@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import React from 'react';
 import { useQuery } from '@tanstack/react-query';
 import api from '../services/api';
 import { useEventStore } from '../store/useEventStore';
@@ -18,7 +18,7 @@ export const Dashboard: React.FC = () => {
   const realTimeEvents = useEventStore((state) => state.events);
   const setEvents = useEventStore((state) => state.setEvents);
 
-  const { data: initialEvents = [] } = useQuery({
+  useQuery({
     queryKey: ['initial-events'],
     queryFn: async () => {
       const res = await api.get('/event-store');
